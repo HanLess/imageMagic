@@ -1,59 +1,86 @@
-function readOneByte() {
-return buffer[0] >>> 0
-}
+import { readFourByte, ab2str } from './util.js'
+import chunksMap from './chunks/index.js'
 
-function readTwoByte() {
-    return (
-        ((buffer[0] << 8) | this.buffer[1]) >>> 0
-    )
-}
-
-function readThreeByte() {
-    return (
-        ((buffer[0] << 16) |
-        (buffer[1] << 8) |
-        buffer[2]) >>>
-        0
-    )
-}
-
-function readFourByte(buffer) {
-    return (
-        ((buffer[0] << 24) |
-        (buffer[1] << 16) |
-        (buffer[2] << 8) |
-        buffer[3]) >>>
-        0
-    )
-}
-//ArrayBuffer转字符串
-function ab2str(u,f) {
-   var b = new Blob([u]);
-   var r = new FileReader();
-    r.readAsText(b, 'utf-8');
-    r.onload = function (){if(f)f.call(null,r.result)}
-}
-//字符串转字符串ArrayBuffer
-function str2ab(s,f) {
-    var b = new Blob([s],{type:'text/plain'});
-    var r = new FileReader();
-    r.readAsArrayBuffer(b);
-    r.onload = function (){if(f)f.call(null,r.result)}
-}
-
-document.getElementById('input').addEventListener('change', (event) => {
+document.getElementById('input').addEventListener('change',async (event) => {
     let file = event.target.files[0]
     let fileReader = new FileReader()
 
-    fileReader.addEventListener('load', (event) => {
+    fileReader.addEventListener('load',async (event) => {
         let arrayBuffer = new Uint8Array(event.target.result)
-        let test = arrayBuffer.slice(8, 8 + 13)
-        test = test.slice(0, 4)
-        // ab2str(test, (result) => {
-        //     console.log(result)
+
+        // arrayBuffer = arrayBuffer.filter((item, index) => {
+        //     return (
+        //         index < 55432 || index >= 71828
+        //     )
         // })
+
+        let signName = arrayBuffer.slice(0, 8)
+        signName = await ab2str(signName)
+        
+        let start = 8
+        let length = 4
+        let leftLength = arrayBuffer.length - start
+
+        let chunkList = []
+
+        while (leftLength > 0) {
+            console.log('--------',start)
+            // length chunk
+            let lengthChunk = arrayBuffer.slice(start, start + length)
+            start = start + length
+            length = 4
+            let dataLength = readFourByte(lengthChunk)
+            leftLength -= 4
+            // type code chunk
+            let typeCodeChunk = arrayBuffer.slice(start , start + length)
+            start = start + length
+            length = dataLength
+            let name = await ab2str(typeCodeChunk)
+            leftLength -= dataLength
+            // data chunk
+            let dataChunk = arrayBuffer.slice(start , start + length)
+            start = start + length
+            length = 4
+            leftLength -= 4
+            // crc chunk
+            let crcChunk = arrayBuffer.slice(start , start + length)
+            start = start + length
+            length = 4
+            leftLength -= 4
+
+            if (chunksMap[name]) {
+                dataChunk = await chunksMap[name](dataChunk)
+            }
+            let chunk = {
+                name: name,
+                length: dataLength,
+                data: dataChunk,
+                crc: crcChunk
+            }
+            chunkList.push(chunk)
+            console.log('=======',start)
+        }
+        console.log(chunkList)
+
+
+        // let newArrayBuffer = arrayBuffer.filter((item, index) => {
+        //     return (
+        //         index < 151383 || index >= 151395
+        //     )
+        // })
+        let newArrayBuffer = arrayBuffer
+        
+        var b = new Blob([newArrayBuffer]);
+        var r = new FileReader();
+        r.readAsDataURL(b);
+        r.onload = function (res){
+            let src = r.result
+
+            let img = new Image();
+            img.src = src;
+            document.body.appendChild(img)            
+        }
     })
 
     fileReader.readAsArrayBuffer(file)
-    
 })
